@@ -1,7 +1,7 @@
 AM_CPPFLAGS = -I$(srcdir)/../util -I$(srcdir)/../decoder -I$(srcdir)/../display -I$(srcdir)/../encoder $(X11_XCB_CFLAGS) $(GLU_CFLAGS) $(X264_CFLAGS) $(CXX11_FLAGS)
 AM_CXXFLAGS = $(PICKY_CXXFLAGS) $(NODEBUG_CXXFLAGS)
 
-bin_PROGRAMS = vp8decode vp8play denseify frameify graphgen frameplayer collisions
+bin_PROGRAMS = vp8decode vp8play denseify frameify graphgen frameplayer collisions stats
 
 vp8decode_SOURCES = vp8decode.cc
 vp8decode_LDADD = ../decoder/libalfalfadecoder.a ../encoder/libalfalfaencoder.a ../display/libalfalfadisplay.a ../util/libalfalfautil.a $(X264_LIBS)
@@ -23,3 +23,6 @@ frameplayer_LDADD = ../decoder/libalfalfadecoder.a ../encoder/libalfalfaencoder.
 
 collisions_SOURCES = collisions.cc
 collisions_LDADD = ../decoder/libalfalfadecoder.a ../encoder/libalfalfaencoder.a ../display/libalfalfadisplay.a ../util/libalfalfautil.a $(X264_LIBS)
+
+stats_SOURCES = stats.cc
+stats_LDADD = ../decoder/libalfalfadecoder.a ../util/libalfalfautil.a
