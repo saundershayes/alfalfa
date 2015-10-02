@@ -46,5 +46,6 @@ public:
 };
 
 using IVF = GenericIVF<File>;
+using MutableIVF = GenericIVF<MutableFile>;
 
 #endif /* IVF_HH */

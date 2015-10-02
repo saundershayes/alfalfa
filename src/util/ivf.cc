@@ -56,8 +56,6 @@ Chunk GenericIVF<FileType>::frame( const uint32_t & index ) const
   return file_( entry.first, entry.second );
 }
 
-template class GenericIVF<File>;
-
 template <typename T> void zero( T & x ) { memset( &x, 0, sizeof( x ) ); }
 
 static void memcpy_le16( uint8_t * dest, const uint16_t val )
@@ -89,6 +87,10 @@ GenericIVF<MutableFile>::GenericIVF( const string & filename,
     frame_count_( 0 ),
     frame_index_()
 {
+  if ( file_.chunk().size() ) {
+    throw internal_error( filename, "exists already" );
+  }
+
   if ( s_fourcc.size() != 4 ) {
     throw internal_error( "IVF", "FourCC must be four bytes long" );
   }
@@ -116,6 +118,8 @@ template <>
 void GenericIVF<MutableFile>::append_frame( const Chunk & chunk )
 {
   /* verify the existing frame count */
+  cout << "current frame count = " << frame_count_ << endl;
+  cout << "what's in the header: " << header_( 24, 4 ).le32() << endl;
   assert( frame_count_ == header_( 24, 4 ).le32() );
 
   /* get current position in the file */
@@ -135,3 +139,6 @@ void GenericIVF<MutableFile>::append_frame( const Chunk & chunk )
   const uint32_t frame_len = chunk.le32();
   frame_index_.emplace_back( position + frame_header_len, frame_len );
 }
+
+template class GenericIVF<File>;
+template class GenericIVF<MutableFile>;

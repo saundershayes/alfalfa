@@ -13,12 +13,13 @@ class File
 protected:
   FileDescriptor fd_;
   size_t size_;
-  uint8_t * buffer_;
-  Chunk chunk_;
+  uint8_t * buffer_ { nullptr };
+  Chunk chunk_ { nullptr, 0 };
 
   File( const std::string & filename,
-	const int open_flags,
-	const int mmap_flags );
+	const int open_flags );
+
+  void map( const int mmap_flags );
   
 public:
   File( const std::string & filename );
