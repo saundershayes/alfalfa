@@ -8,10 +8,11 @@
 using namespace std;
 
 File::File( const string & filename,
-	    const int open_flags )
+	    const int open_flags,
+	    const int mmap_flags )
   : fd_( SystemCall( filename, open( filename.c_str(), open_flags ) ) ),
     size_( fd_.size() ),
-    buffer_( static_cast<uint8_t *>( mmap( nullptr, size_, PROT_READ, MAP_SHARED, fd_.num(), 0 ) ) ),
+    buffer_( static_cast<uint8_t *>( mmap( nullptr, size_, mmap_flags, MAP_SHARED, fd_.num(), 0 ) ) ),
     chunk_( buffer_, size_ )
 {
   if ( buffer_ == MAP_FAILED ) {
@@ -20,7 +21,7 @@ File::File( const string & filename,
 }
 
 File::File( const string & filename )
-  : File( filename, O_RDONLY )
+  : File( filename, O_RDONLY, PROT_READ )
 {}
 
 File::~File()
@@ -39,11 +40,11 @@ File::File( File && other )
   other.buffer_ = nullptr;
 }
 
-AppendableFile::AppendableFile( const string & filename )
-  : File( filename, O_RDWR | O_APPEND | O_CREAT )
+MutableFile::MutableFile( const string & filename )
+  : File( filename, O_RDWR | O_APPEND | O_CREAT, PROT_READ | PROT_WRITE )
 {}
 
-void AppendableFile::append( const Chunk & new_chunk )
+void MutableFile::append( const Chunk & new_chunk )
 {
   /* append to file */
   Chunk left_to_write = new_chunk;

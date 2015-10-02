@@ -17,7 +17,8 @@ protected:
   Chunk chunk_;
 
   File( const std::string & filename,
-	const int open_flags );
+	const int open_flags,
+	const int mmap_flags );
   
 public:
   File( const std::string & filename );
@@ -37,13 +38,15 @@ public:
   File( File && other );
 };
 
-class AppendableFile : public File
+class MutableFile : public File
 {
 public:
-  AppendableFile( const std::string & filename );
+  MutableFile( const std::string & filename );
 
   /* Allow appending */
   void append( const Chunk & new_chunk );
+
+  uint8_t * mutable_buffer() { return buffer_; }
 };
 
 #endif /* FILE_HH */
