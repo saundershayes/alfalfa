@@ -10,12 +10,15 @@
 
 class File
 {
-private:
+protected:
   FileDescriptor fd_;
   size_t size_;
   uint8_t * buffer_;
   Chunk chunk_;
 
+  File( const std::string & filename,
+	const int open_flags );
+  
 public:
   File( const std::string & filename );
   ~File();
@@ -32,6 +35,15 @@ public:
 
   /* Allow moving */
   File( File && other );
+};
+
+class AppendableFile : public File
+{
+public:
+  AppendableFile( const std::string & filename );
+
+  /* Allow appending */
+  void append( const Chunk & new_chunk );
 };
 
 #endif /* FILE_HH */
