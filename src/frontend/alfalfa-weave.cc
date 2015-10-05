@@ -48,9 +48,8 @@ private:
   void update_source_players( const SerializedFrame & frame )
   {
     for ( SourcePlayer & player : source_players_ ) {
-      if ( player.can_decode( frame ) ) {
+      if ( player.can_decode( frame ) and not player.need_continuation() ) {
         player.sync_changes( stream_player_ );
-        player.set_need_continuation( false );
       }
       else {
         player.set_need_continuation( true );
@@ -130,7 +129,15 @@ public:
         // Even if we didn't need to make a new continuation frame, we still need to sync the most recent
         // changes from stream player (the same effect as decoding stream_player's last frame)
         source_player.sync_changes( stream_player_ );
+
+        // Set player as not needing continuation, will be reevaluated for next
+        // frames
+        source_player.set_need_continuation( false );
       }
+
+      // Regardless of whether or not this stream actually needed a continuation, after this point
+      // it no longer needs an unshown "first step" continuation
+      source_player.unset_first_continuation();
     }
   }
 

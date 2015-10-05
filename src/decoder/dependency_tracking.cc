@@ -300,3 +300,8 @@ bool DecoderHash::operator==( const DecoderHash & other ) const
          golden_hash_ == other.golden_hash_ and
          alt_hash_ == other.alt_hash_;
 }
+
+bool DecoderHash::operator!=( const DecoderHash & other ) const
+{
+  return not operator==( other );
+}

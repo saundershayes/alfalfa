@@ -40,7 +40,7 @@ public:
 
   void apply_changes( Decoder & other ) const;
 
-  bool need_gen_continuation( void ) const;
+  bool need_gen_continuation() const;
 
   PreContinuation make_pre_continuation( const SourcePlayer & source ) const;
 
@@ -67,26 +67,35 @@ public:
     need_continuation_ = b;
   }
 
-  bool need_continuation( void ) const
+  bool need_continuation() const
   {
     return need_continuation_;
   }
 
-  bool first_continuation( void ) const
+  bool first_continuation() const
   {
     return first_continuation_;
   }
 
-  Optional<RasterHandle> decode( const SerializedFrame & frame )
+  void unset_first_continuation()
   {
     first_continuation_ = false;
+  }
+
+  Optional<RasterHandle> decode( const SerializedFrame & frame )
+  {
     return FramePlayer::decode( frame );
   }
 
   void sync_changes( const ContinuationPlayer & target_player )
   {
-    first_continuation_ = false;
     target_player.apply_changes( decoder_ );
+  }
+
+  bool operator==( const SourcePlayer & other) const
+  {
+    return FramePlayer::operator==( other ) and need_continuation_ == other.need_continuation_ and
+      first_continuation_ == other.first_continuation_;
   }
 };
 

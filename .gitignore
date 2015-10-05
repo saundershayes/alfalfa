@@ -24,14 +24,14 @@ Makefile.in
 /test-driver
 
 /src/frontend/diff-sizes
-/src/frontend/denseify
+/src/frontend/alfalfa-weave
 /src/frontend/frameify
 /src/frontend/frameplayer
 /src/frontend/graphgen
 /src/frontend/vp8play
 /src/frontend/vp8decode
 /src/frontend/collisions
-/src/frontend/stats
+/src/frontend/alfalfa-describe
 /src/tests/decode-to-stdout
 /src/tests/encode-loopback
 /src/tests/extract-key-frames
