@@ -324,7 +324,7 @@ int main( int argc, char * argv[] )
 
     cout << "Length: " << stream.total_time() << " seconds\n";
     cout << "Total frames: " << stream.total_frames() << "\n";
-    cout << "Bitrate: " << stream.total_stream_size() / stream.total_time() << " bytes per second\n";
+    cout << "Bitrate: " << (stream.total_stream_size() * 8 / stream.total_time()) / 1000 << " kilobits per second\n";
     cout << "KeyFrame frequency: " << stream.mean_keyframe_interval() << " seconds between keyframes\n";
     cout << "KeyFrame median size: " << stream.median_keyframe_size() << " bytes\n";
     cout << "KeyFrame mean size: " << stream.mean_keyframe_size() << " bytes\n";
