@@ -163,11 +163,20 @@ public:
     return median( key_frame_sizes_ );
   }
 
+  unsigned total_stream_size( void ) const
+  {
+    unsigned total = 0;
+    for ( const Frame * frame : stream_frames_ ) {
+      total += frame->size;
+    }
+    return total;
+  }
+
   vector<unsigned> switch_sizes( const StreamTracker & target ) const
   {
     vector<unsigned> switch_sizes;
-    unsigned max_switch_size = 0;
-    vector<const Frame *> max_switch_frames;
+    //unsigned max_switch_size = 0;
+    //vector<const Frame *> max_switch_frames;
     for ( unsigned switch_num = 0; switch_num < total_displayed_frames_; switch_num++ ) {
       vector<const Frame *> switch_frames;
       unsigned switch_size = 0;
@@ -244,16 +253,16 @@ public:
         switch_sizes.push_back( switch_size );
       }
 
-      if ( switch_size > max_switch_size ) {
-        max_switch_size = switch_size;
-        max_switch_frames = switch_frames;
-      }
+      //if ( switch_size > max_switch_size ) {
+      //  max_switch_size = switch_size;
+      //  max_switch_frames = switch_frames;
+      //}
     }
 
-    cout << "Max switch size: " << max_switch_size << endl;
-    for ( auto x : max_switch_frames ) {
-      cout << x->name << " " << x->size << endl;
-    }
+    //cout << "Max switch size: " << max_switch_size << endl;
+    //for ( auto x : max_switch_frames ) {
+    //  cout << x->name << " " << x->size << endl;
+    //}
 
     return switch_sizes;
   }
@@ -315,6 +324,7 @@ int main( int argc, char * argv[] )
 
     cout << "Length: " << stream.total_time() << " seconds\n";
     cout << "Total frames: " << stream.total_frames() << "\n";
+    cout << "Bitrate: " << stream.total_stream_size() / stream.total_time() << " bytes per second\n";
     cout << "KeyFrame frequency: " << stream.mean_keyframe_interval() << " seconds between keyframes\n";
     cout << "KeyFrame median size: " << stream.median_keyframe_size() << " bytes\n";
     cout << "KeyFrame mean size: " << stream.mean_keyframe_size() << " bytes\n";
