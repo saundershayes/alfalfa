@@ -166,7 +166,10 @@ public:
   vector<unsigned> switch_sizes( const StreamTracker & target ) const
   {
     vector<unsigned> switch_sizes;
+    unsigned max_switch_size = 0;
+    vector<const Frame *> max_switch_frames;
     for ( unsigned switch_num = 0; switch_num < total_displayed_frames_; switch_num++ ) {
+      vector<const Frame *> switch_frames;
       unsigned switch_size = 0;
 
       DecoderHash source_decoder( decoders_[ shown_indexes_[ switch_num ] ] );
@@ -186,6 +189,7 @@ public:
 
         if ( source_decoder.can_decode( target_frame->source ) ) {
           source_decoder.update( target_frame->target );
+          switch_frames.push_back( target_frame );
         } else {
           // Need continuation
           // Jump to the next displayed frame in the target
@@ -228,6 +232,7 @@ public:
 
           assert( source_decoder.can_decode( continuation->source ) );
           source_decoder.update( continuation->target );
+          switch_frames.push_back( continuation );
         }
 
         cur_displayed++;
@@ -238,6 +243,15 @@ public:
       if ( switch_size != 0 ) {
         switch_sizes.push_back( switch_size );
       }
+
+      if ( switch_size > max_switch_size ) {
+        max_switch_frames = switch_frames;
+      }
+    }
+
+    cout << "Max switch size: " << max_switch_size << endl;
+    for ( auto x : max_switch_frames ) {
+      cout << x->name << " " << x->size << endl;
     }
 
     return switch_sizes;
