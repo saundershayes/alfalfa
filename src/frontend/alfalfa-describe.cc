@@ -245,6 +245,7 @@ public:
       }
 
       if ( switch_size > max_switch_size ) {
+        max_switch_size = switch_size;
         max_switch_frames = switch_frames;
       }
     }
