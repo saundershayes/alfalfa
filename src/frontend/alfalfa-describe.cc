@@ -221,7 +221,10 @@ public:
           string continuation_frame_name = new_source.str() + "#" + new_target.str();
 
           const Frame * continuation = frame_manager_.frame_for_name( continuation_frame_name );
-          switch_size += continuation->size;
+          if ( continuation_depend ) {
+            // Only track continuations depending on the preloop raster
+            switch_size += continuation->size;
+          }
 
           assert( source_decoder.can_decode( continuation->source ) );
           source_decoder.update( continuation->target );
@@ -232,7 +235,9 @@ public:
         shown_continuation = true;
       }
 
-      switch_sizes.push_back( switch_size );
+      if ( switch_size != 0 ) {
+        switch_sizes.push_back( switch_size );
+      }
     }
 
     return switch_sizes;
