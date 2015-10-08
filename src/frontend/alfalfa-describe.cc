@@ -27,12 +27,12 @@ static double median( const vector<unsigned> & container )
 
 static double mean( const vector<unsigned> & container )
 {
-  unsigned total = 0;
+  double total = 0;
   for ( unsigned elem : container ) {
     total += elem;
   }
 
-  return (double)total / container.size();
+  return total / container.size();
 }
 
 struct Frame {
@@ -269,6 +269,23 @@ public:
 
 };
 
+vector<unsigned> best_switch_sizes( const vector<unsigned> & switch_sizes, unsigned interval )
+{
+  vector<unsigned> best;
+  for (unsigned start_range = 0; start_range < switch_sizes.size() - interval; start_range++ ) {
+    unsigned best_switch = switch_sizes[ start_range ];
+    for ( unsigned i = 1; i < interval; i++ ) {
+      unsigned switch_size = switch_sizes[ start_range + i ];
+      if ( switch_size < best_switch ) {
+        best_switch = switch_size;
+      }
+    }
+    best.push_back( best_switch );
+  }
+
+  return best;
+}
+
 int main( int argc, char * argv[] )
 {
   if ( argc < 2 ) {
@@ -317,6 +334,7 @@ int main( int argc, char * argv[] )
     streams.emplace_back( frames, frame_manager );
   }
 
+  cout << fixed;
   for ( unsigned stream_idx = 0; stream_idx < streams.size(); stream_idx++ ) {
     cout << "Stream " << stream_idx << ":\n";
 
@@ -337,15 +355,21 @@ int main( int argc, char * argv[] )
     const StreamTracker & target = streams[ stream_idx + 1 ];
 
     vector<unsigned> switch_sizes = source.switch_sizes( target );
+    vector<unsigned> best_sizes = best_switch_sizes( switch_sizes, 48 );
 
     cout << "Stream " << stream_idx << " -> Stream " << stream_idx + 1 << ":\n";
     cout << "Switch median size: " << median( switch_sizes ) << " bytes\n";
     cout << "Switch mean size: " << mean( switch_sizes ) << " bytes\n\n";
+    cout << "Best 2 sec switch median size: " << median( best_sizes ) << " bytes\n";
+    cout << "Best 2 sec switch mean size: " << mean( best_sizes ) << " bytes\n\n";
 
     switch_sizes = target.switch_sizes( source );
+    best_sizes = best_switch_sizes( switch_sizes, 48 );
 
     cout << "Stream " << stream_idx + 1 << " -> Stream " << stream_idx << ":\n";
     cout << "Switch median size: " << median( switch_sizes ) << " bytes\n";
     cout << "Switch mean size: " << mean( switch_sizes ) << " bytes\n\n";
+    cout << "Best 2 sec switch median size: " << median( best_sizes ) << " bytes\n";
+    cout << "Best 2 sec switch mean size: " << mean( best_sizes ) << " bytes\n\n";
   }
 }
