@@ -8,7 +8,6 @@
 #include "ivf.hh"
 #include "frame_info.hh"
 #include "decoder.hh"
-#include "serialized_frame.hh"
 
 struct FrameRawData
 {
@@ -30,6 +29,8 @@ public:
   FramePlayer( const uint16_t width, const uint16_t height );
 
   Optional<RasterHandle> decode( const Chunk & chunk );
+
+  Optional<RasterHandle> safe_decode( const FrameInfo & info, const Chunk & chunk );
 
   const VP8Raster & example_raster( void ) const;
 

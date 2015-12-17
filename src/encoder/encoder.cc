@@ -10,92 +10,6 @@
 
 using namespace std;
 
-static vector< uint8_t > make_frame( const bool key_frame,
-				     const bool show_frame,
-				     const bool experimental,
-				     const uint16_t width,
-				     const uint16_t height,
-				     const vector< uint8_t > & first_partition,
-				     const vector< vector< uint8_t > > & dct_partitions )
-{
-  if ( width > 16383 or height > 16383 ) {
-    throw Invalid( "VP8 frame dimensions too large." );
-  }
-
-  if ( dct_partitions.empty() ) {
-    throw Invalid( "at least one DCT partition is required." );
-  }
-
-  vector< uint8_t > ret;
-
-  const uint32_t first_partition_length = first_partition.size();
-
-  /* frame tag */
-  ret.emplace_back( (!key_frame) | (experimental << 3) | (show_frame << 4) | (first_partition_length & 0x7) << 5 );
-  ret.emplace_back( (first_partition_length & 0x7f8) >> 3 );
-  ret.emplace_back( (first_partition_length & 0x7f800) >> 11 );
-
-  if ( key_frame ) {
-    /* start code */
-    ret.emplace_back( 0x9d );
-    ret.emplace_back( 0x01 );
-    ret.emplace_back( 0x2a );
-
-    /* width */
-    ret.emplace_back( width & 0xff );
-    ret.emplace_back( (width & 0x3f00) >> 8 );
-
-    /* height */
-    ret.emplace_back( height & 0xff );
-    ret.emplace_back( (height & 0x3f00) >> 8 );
-  }
-
-  /* first partition */
-  ret.insert( ret.end(), first_partition.begin(), first_partition.end() );
-
-  /* DCT partition lengths */
-  for ( unsigned int i = 0; i < dct_partitions.size() - 1; i++ ) {
-    const uint32_t length = dct_partitions.at( i ).size();
-    ret.emplace_back( length & 0xff );
-    ret.emplace_back( (length & 0xff00) >> 8 );
-    ret.emplace_back( (length & 0xff0000) >> 16 );
-  }
-
-  for ( const auto & dct_partition : dct_partitions ) {
-    ret.insert( ret.end(), dct_partition.begin(), dct_partition.end() );
-  }
-
-  return ret;
-}
-
-template <>
-vector< uint8_t > KeyFrame::serialize( const ProbabilityTables & probability_tables ) const
-{
-  ProbabilityTables frame_probability_tables( probability_tables );
-  frame_probability_tables.coeff_prob_update( header() );
-
-  return make_frame( true,
-		     show_,
-		     continuation_header_.initialized(),
-		     display_width_, display_height_,
-		     serialize_first_partition( frame_probability_tables ),
-		     serialize_tokens( frame_probability_tables ) );
-}
-
-template <>
-vector< uint8_t > InterFrame::serialize( const ProbabilityTables & probability_tables ) const
-{
-  ProbabilityTables frame_probability_tables( probability_tables );
-  frame_probability_tables.update( header() );
-
-  return make_frame( false,
-		     show_,
-		     continuation_header_.initialized(),
-		     display_width_, display_height_,
-		     serialize_first_partition( frame_probability_tables ),
-		     serialize_tokens( frame_probability_tables ) );
-}
-
 static void encode( BoolEncoder & encoder, const Boolean & flag, const Probability probability = 128 )
 {
   encoder.put( flag, probability );
@@ -201,21 +115,19 @@ static void encode( BoolEncoder & encoder, const UpdateSegmentation & h )
   encode( encoder, h.mb_segmentation_map );
 }
 
-static void encode( BoolEncoder & encoder, const ReplacementEntropyHeader & h )
+static void encode( BoolEncoder & encoder, const StateUpdateFrameHeader & h )
 {
   encode( encoder, h.token_prob_update );
   encode( encoder, h.intra_16x16_prob );
   encode( encoder, h.intra_chroma_prob );
-  encode( encoder, h.mv_prob_update );
+  encode( encoder, h.mv_prob_replacement );
 }
 
-static void encode( BoolEncoder & encoder, const ContinuationHeader & h )
+static void encode( BoolEncoder & encoder, const RefUpdateFrameHeader & h )
 {
-  encode( encoder, h.missing_last_frame );
-  encode( encoder, h.missing_golden_frame );
-  encode( encoder, h.missing_alternate_reference_frame );
-  encode( encoder, h.continuation_token_probabilities );
-  encode( encoder, h.replacement_entropy_header );
+  encode( encoder, h.ref_to_update );
+  encode( encoder, h.token_prob_update );
+  encode( encoder, h.prob_skip_false );
 }
 
 static void encode( BoolEncoder & encoder, const KeyFrameHeader & header )
@@ -272,6 +184,12 @@ static void encode( BoolEncoder & encoder,
   encode( encoder, header.is_inter_mb, frame_header.prob_inter );
   encode( encoder, header.mb_ref_frame_sel1, frame_header.prob_references_last );
   encode( encoder, header.mb_ref_frame_sel2, frame_header.prob_references_golden );
+}
+
+static void encode( BoolEncoder &,
+                    const RefUpdateFrameMacroblockHeader &,
+                    const RefUpdateFrameHeader & )
+{
 }
 
 static void encode( BoolEncoder & encoder,
@@ -448,6 +366,11 @@ void InterFrameMacroblock::encode_prediction_modes( BoolEncoder & encoder,
   }
 }
 
+template <>
+void RefUpdateFrameMacroblock::encode_prediction_modes( BoolEncoder &,
+						        const ProbabilityTables & ) const
+{}
+
 template <class FrameHeaderType, class MacroblockheaderType >
 void Macroblock< FrameHeaderType, MacroblockheaderType >::serialize( BoolEncoder & encoder,
 								     const FrameHeaderType & frame_header,
@@ -457,36 +380,15 @@ void Macroblock< FrameHeaderType, MacroblockheaderType >::serialize( BoolEncoder
   encode( encoder, segment_id_update_, mb_segment_tree_probs );
   encode( encoder, mb_skip_coeff_, frame_header.prob_skip_false.get_or( 0 ) );
   encode( encoder, header_, frame_header );
-  encode( encoder, loopfilter_skip_subblock_edges_ );
   encode_prediction_modes( encoder, probability_tables );
 }
 
 template <>
-void InterFrame::optimize_continuation_coefficients( void )
-{
-  if ( continuation_header_.initialized() ) {
-    TokenBranchCounts token_branch_counts;
-    macroblock_headers_.get().forall( [&]( const InterFrameMacroblock & macroblock ) {
-	macroblock.accumulate_token_branches( token_branch_counts ); } );
-
-    for ( unsigned int i = 0; i < BLOCK_TYPES; i++ ) {
-      for ( unsigned int j = 0; j < COEF_BANDS; j++ ) {
-	for ( unsigned int k = 0; k < PREV_COEF_CONTEXTS; k++ ) {
-	  for ( unsigned int l = 0; l < ENTROPY_NODES; l++ ) {
-	    const unsigned int false_count = token_branch_counts.at( i ).at( j ).at( k ).at( l ).first;
-	    const unsigned int true_count = token_branch_counts.at( i ).at( j ).at( k ).at( l ).second;
-
-	    const unsigned int prob = 256 * (false_count + 1) / (false_count + true_count + 2);
-
-	    assert( prob <= 255 );
-
-	    continuation_header_.get().continuation_token_probabilities.at( i ).at( j ).at( k ).at( l ) = prob;
-	  }
-	}
-      }
-    }
-  }
-}
+void StateUpdateFrameMacroblock::serialize( BoolEncoder &,
+                                            const StateUpdateFrameHeader &,
+					    const ProbabilityArray< num_segments > &,
+					    const ProbabilityTables & ) const
+{}
 
 template <class FrameHeaderType, class MacroblockType>
 vector< uint8_t > Frame< FrameHeaderType, MacroblockType >::serialize_first_partition( const ProbabilityTables & probability_tables ) const
@@ -495,9 +397,6 @@ vector< uint8_t > Frame< FrameHeaderType, MacroblockType >::serialize_first_part
 
   /* encode frame header */
   encode( encoder, header() );
-
-  /* encode continuation header if present */
-  encode( encoder, continuation_header_ );
 
   const auto segment_tree_probs = calculate_mb_segment_tree_probs();
 
@@ -511,33 +410,27 @@ vector< uint8_t > Frame< FrameHeaderType, MacroblockType >::serialize_first_part
   return encoder.finish();
 }
 
+template <>
+vector<uint8_t> StateUpdateFrame::serialize_first_partition( const ProbabilityTables & ) const
+{
+  BoolEncoder encoder;
+  encode( encoder, header() );
+
+  return encoder.finish();
+}
+
 template <class FrameHeaderType, class MacroblockType>
 vector< vector< uint8_t > > Frame< FrameHeaderType, MacroblockType >::serialize_tokens( const ProbabilityTables & probability_tables ) const
 {
   vector< BoolEncoder > dct_partitions( dct_partition_count() );
-
-  ProbabilityTables continuation_probability_table = probability_tables;
-  if ( continuation_header_.initialized() ) {
-    for ( unsigned int i = 0; i < BLOCK_TYPES; i++ ) {
-      for ( unsigned int j = 0; j < COEF_BANDS; j++ ) {
-	for ( unsigned int k = 0; k < PREV_COEF_CONTEXTS; k++ ) {
-	  for ( unsigned int l = 0; l < ENTROPY_NODES; l++ ) {    
-	    continuation_probability_table.coeff_probs.at( i ).at( j ).at( k ).at( l )
-	      = continuation_header_.get().continuation_token_probabilities.at( i ).at( j ).at( k ).at( l );
-	  }
-	}
-      }
-    }
-  }
 
   /* serialize every macroblock's tokens */
   macroblock_headers_.get().forall_ij( [&]( const MacroblockType & macroblock,
 					    const unsigned int column __attribute((unused)),
 					    const unsigned int row )
 				       {
-					 const ProbabilityTables & prob_table = macroblock.continuation() ? continuation_probability_table : probability_tables;
 					 macroblock.serialize_tokens( dct_partitions.at( row % dct_partition_count() ),
-								      prob_table ); } );
+								      probability_tables ); } );
 
   /* finish encoding and return the resulting octet sequences */
   vector< vector< uint8_t > > ret;
@@ -555,7 +448,7 @@ void Macroblock< FrameHeaderType, MacroblockheaderType >::serialize_tokens( Bool
     return;
   }
 
-  if ( Y2_.coded() and (not continuation_) ) {
+  if ( Y2_.coded() ) {
     Y2_.serialize_tokens( encoder, probability_tables );
   }
 
@@ -703,12 +596,13 @@ static void accumulate_token_branches( const Block<initial_block_type, Predictio
 template <class FrameHeaderType, class MacroblockHeaderType>
 void Macroblock<FrameHeaderType, MacroblockHeaderType>::accumulate_token_branches( TokenBranchCounts & counts ) const
 {
-  if ( continuation_ ) {
-    Y_.forall( [&]( const YBlock & block ) { ::accumulate_token_branches( block, counts ); } );
-    U_.forall( [&]( const UVBlock & block ) { ::accumulate_token_branches( block, counts ); } );
-    V_.forall( [&]( const UVBlock & block ) { ::accumulate_token_branches( block, counts ); } );
-  }
+  Y_.forall( [&]( const YBlock & block ) { ::accumulate_token_branches( block, counts ); } );
+  U_.forall( [&]( const UVBlock & block ) { ::accumulate_token_branches( block, counts ); } );
+  V_.forall( [&]( const UVBlock & block ) { ::accumulate_token_branches( block, counts ); } );
 }
+
+template
+void RefUpdateFrameMacroblock::accumulate_token_branches( TokenBranchCounts & ) const;
 
 template <BlockType initial_block_type, class PredictionMode>
 void Block< initial_block_type,
@@ -855,3 +749,121 @@ void Block< initial_block_type,
     encoder.put( false, prob.at( 0 ) );
   }
 }
+
+static vector< uint8_t > make_frame( const bool key_frame,
+				     const bool show_frame,
+				     const bool experimental,
+                                     const bool reference_update,
+				     const uint16_t width,
+				     const uint16_t height,
+				     const vector< uint8_t > & first_partition,
+				     const vector< vector< uint8_t > > & dct_partitions )
+{
+  if ( width > 16383 or height > 16383 ) {
+    throw Invalid( "VP8 frame dimensions too large." );
+  }
+
+  if ( dct_partitions.empty() ) {
+    throw Invalid( "at least one DCT partition is required." );
+  }
+
+  vector< uint8_t > ret;
+
+  const uint32_t first_partition_length = first_partition.size();
+
+  /* frame tag */
+  ret.emplace_back( ( !key_frame ) | ( reference_update << 2 ) | ( experimental << 3 ) |
+                    ( show_frame << 4 ) | ( first_partition_length & 0x7 ) << 5 );
+  ret.emplace_back( ( first_partition_length & 0x7f8 ) >> 3 );
+  ret.emplace_back( ( first_partition_length & 0x7f800 ) >> 11 );
+
+  if ( key_frame ) {
+    /* start code */
+    ret.emplace_back( 0x9d );
+    ret.emplace_back( 0x01 );
+    ret.emplace_back( 0x2a );
+
+    /* width */
+    ret.emplace_back( width & 0xff );
+    ret.emplace_back( (width & 0x3f00) >> 8 );
+
+    /* height */
+    ret.emplace_back( height & 0xff );
+    ret.emplace_back( (height & 0x3f00) >> 8 );
+  }
+
+  /* first partition */
+  ret.insert( ret.end(), first_partition.begin(), first_partition.end() );
+
+  /* DCT partition lengths */
+  for ( unsigned int i = 0; i < dct_partitions.size() - 1; i++ ) {
+    const uint32_t length = dct_partitions.at( i ).size();
+    ret.emplace_back( length & 0xff );
+    ret.emplace_back( (length & 0xff00) >> 8 );
+    ret.emplace_back( (length & 0xff0000) >> 16 );
+  }
+
+  for ( const auto & dct_partition : dct_partitions ) {
+    ret.insert( ret.end(), dct_partition.begin(), dct_partition.end() );
+  }
+
+  return ret;
+}
+
+template <>
+vector<uint8_t> KeyFrame::serialize( const ProbabilityTables & probability_tables ) const
+{
+  ProbabilityTables frame_probability_tables( probability_tables );
+  frame_probability_tables.coeff_prob_update( header() );
+
+  return make_frame( true,
+		     show_,
+                     false,
+                     false,
+		     display_width_, display_height_,
+		     serialize_first_partition( frame_probability_tables ),
+		     serialize_tokens( frame_probability_tables ) );
+}
+
+template <>
+vector<uint8_t> InterFrame::serialize( const ProbabilityTables & probability_tables ) const
+{
+  ProbabilityTables frame_probability_tables( probability_tables );
+  frame_probability_tables.update( header() );
+
+  return make_frame( false,
+		     show_,
+                     false,
+                     false,
+		     display_width_, display_height_,
+		     serialize_first_partition( frame_probability_tables ),
+		     serialize_tokens( frame_probability_tables ) );
+}
+
+template <>
+vector<uint8_t> RefUpdateFrame::serialize( const ProbabilityTables & probability_tables ) const
+{
+  ProbabilityTables frame_probability_tables( probability_tables );
+  frame_probability_tables.coeff_prob_update( header() );
+
+  return make_frame( false,
+                     show_,
+                     true,
+                     true,
+                     display_width_, display_height_,
+                     serialize_first_partition( frame_probability_tables ),
+                     serialize_tokens( frame_probability_tables ) );
+}
+
+template <>
+vector<uint8_t> StateUpdateFrame::serialize( const ProbabilityTables & probability_tables ) const
+{
+  return make_frame( false,
+                     show_,
+                     true,
+                     false,
+                     display_width_, display_height_,
+                     serialize_first_partition( probability_tables ),
+                     vector<vector<uint8_t>>{ vector<uint8_t>() } );
+}
+

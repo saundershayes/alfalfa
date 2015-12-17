@@ -21,7 +21,7 @@ int main( int argc, char const *argv[] )
   try
   {
     if ( argc != 4 ) {
-      cerr << "usage: alfalfa-combine <alf-1> <alf-2> <destination-dir>" << endl;
+      cerr << "Usage: " << argv[ 0 ] << " <alf-1> <alf-2> <destination-dir>" << endl;
       return EX_USAGE;
     }
 
@@ -33,10 +33,10 @@ int main( int argc, char const *argv[] )
 
     PlayableAlfalfaVideo alf1( alf1_path );
     PlayableAlfalfaVideo alf2( alf2_path );
-    WritableAlfalfaVideo res_video( destination_dir, alf1.video_manifest().info() );
+    WritableAlfalfaVideo res_video( destination_dir, alf1.get_info().fourcc, alf1.get_info().width, alf1.get_info().height );
 
-    res_video.combine( alf1 );
-    res_video.combine( alf2 );
+    combine ( res_video, alf1 );
+    combine ( res_video, alf2 );
 
     res_video.save();
   } catch (const exception &e ) {

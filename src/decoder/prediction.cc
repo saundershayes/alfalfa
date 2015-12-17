@@ -330,30 +330,7 @@ void VP8Raster::Block4::intra_predict( const bmode b_mode )
   }
 }
 
-class EdgeExtendedRaster
-{
-private:
-  const TwoD< uint8_t > & master_;
-
-public:
-  EdgeExtendedRaster( const TwoD< uint8_t > & master )
-    : master_( master ) {}
-
-  uint8_t at( const int column, const int row ) const
-  {
-    int bounded_column = column;
-    if ( bounded_column < 0 ) bounded_column = 0;
-    if ( bounded_column > int(master_.width() - 1) ) bounded_column = master_.width() - 1;
-
-    int bounded_row = row;
-    if ( bounded_row < 0 ) bounded_row = 0;
-    if ( bounded_row > int(master_.height() - 1) ) bounded_row = master_.height() - 1;
-
-    return master_.at( bounded_column, bounded_row );
-  }
-};
-
-static constexpr SafeArray< SafeArray< int16_t, 6 >, 8 > sixtap_filters =
+static constexpr SafeArray<SafeArray<int16_t, 6>, 8> sixtap_filters =
   {{ { { 0,  0,  128,    0,   0,  0 } },
      { { 0, -6,  123,   12,  -1,  0 } },
      { { 2, -11, 108,   36,  -8,  1 } },
@@ -385,11 +362,11 @@ void VP8Raster::Block<size>::inter_predict( const MotionVector & mv, const TwoD<
 #ifdef HAVE_SSE2
 template <>
 void VP8Raster::Block<4>::sse_horiz_inter_predict( const uint8_t * src,
-						const unsigned int pixels_per_line,
-						const uint8_t * dst,
-						const unsigned int dst_pitch,
-						const unsigned int dst_height,
-						const unsigned int filter_idx)
+						   const unsigned int pixels_per_line,
+						   const uint8_t * dst,
+						   const unsigned int dst_pitch,
+						   const unsigned int dst_height,
+						   const unsigned int filter_idx)
 {
   vp8_filter_block1d4_h6_ssse3( src, pixels_per_line, dst, dst_pitch, dst_height,
 				filter_idx );
@@ -397,11 +374,11 @@ void VP8Raster::Block<4>::sse_horiz_inter_predict( const uint8_t * src,
 
 template <>
 void VP8Raster::Block<8>::sse_horiz_inter_predict( const uint8_t * src,
-						const unsigned int pixels_per_line,
-						const uint8_t * dst,
-						const unsigned int dst_pitch,
-						const unsigned int dst_height,
-						const unsigned int filter_idx)
+						   const unsigned int pixels_per_line,
+						   const uint8_t * dst,
+						   const unsigned int dst_pitch,
+						   const unsigned int dst_height,
+						   const unsigned int filter_idx)
 {
   vp8_filter_block1d8_h6_ssse3( src, pixels_per_line, dst, dst_pitch, dst_height,
 				filter_idx );
@@ -409,11 +386,11 @@ void VP8Raster::Block<8>::sse_horiz_inter_predict( const uint8_t * src,
 
 template <>
 void VP8Raster::Block<16>::sse_horiz_inter_predict( const uint8_t * src,
-						const unsigned int pixels_per_line,
-						const uint8_t * dst,
-						const unsigned int dst_pitch,
-						const unsigned int dst_height,
-						const unsigned int filter_idx)
+						    const unsigned int pixels_per_line,
+						    const uint8_t * dst,
+						    const unsigned int dst_pitch,
+						    const unsigned int dst_height,
+						    const unsigned int filter_idx)
 {
   vp8_filter_block1d16_h6_ssse3( src, pixels_per_line, dst, dst_pitch, dst_height,
 				filter_idx );
@@ -421,11 +398,11 @@ void VP8Raster::Block<16>::sse_horiz_inter_predict( const uint8_t * src,
 
 template <>
 void VP8Raster::Block<4>::sse_vert_inter_predict( const uint8_t * src,
-						const unsigned int pixels_per_line,
-						const uint8_t * dst,
-						const unsigned int dst_pitch,
-						const unsigned int dst_height,
-						const unsigned int filter_idx)
+						  const unsigned int pixels_per_line,
+						  const uint8_t * dst,
+						  const unsigned int dst_pitch,
+						  const unsigned int dst_height,
+						  const unsigned int filter_idx)
 {
   vp8_filter_block1d4_v6_ssse3( src, pixels_per_line, dst, dst_pitch, dst_height,
 				filter_idx );
@@ -433,11 +410,11 @@ void VP8Raster::Block<4>::sse_vert_inter_predict( const uint8_t * src,
 
 template <>
 void VP8Raster::Block<8>::sse_vert_inter_predict( const uint8_t * src,
-						const unsigned int pixels_per_line,
-						const uint8_t * dst,
-						const unsigned int dst_pitch,
-						const unsigned int dst_height,
-						const unsigned int filter_idx)
+						  const unsigned int pixels_per_line,
+						  const uint8_t * dst,
+						  const unsigned int dst_pitch,
+						  const unsigned int dst_height,
+						  const unsigned int filter_idx)
 {
   vp8_filter_block1d8_v6_ssse3( src, pixels_per_line, dst, dst_pitch, dst_height,
 				filter_idx );
@@ -445,11 +422,11 @@ void VP8Raster::Block<8>::sse_vert_inter_predict( const uint8_t * src,
 
 template <>
 void VP8Raster::Block<16>::sse_vert_inter_predict( const uint8_t * src,
-						const unsigned int pixels_per_line,
-						const uint8_t * dst,
-						const unsigned int dst_pitch,
-						const unsigned int dst_height,
-						const unsigned int filter_idx)
+						   const unsigned int pixels_per_line,
+						   const uint8_t * dst,
+						   const unsigned int dst_pitch,
+						   const unsigned int dst_height,
+						   const unsigned int filter_idx)
 {
   vp8_filter_block1d16_v6_ssse3( src, pixels_per_line, dst, dst_pitch, dst_height,
 				filter_idx );
@@ -459,7 +436,7 @@ void VP8Raster::Block<16>::sse_vert_inter_predict( const uint8_t * src,
 
 template <unsigned int size>
 void VP8Raster::Block<size>::unsafe_inter_predict( const MotionVector & mv, const TwoD< uint8_t > & reference,
-						const int source_column, const int source_row )
+						   const int source_column, const int source_row )
 {
   assert( contents_.stride() == reference.width() );
 
@@ -565,7 +542,7 @@ void VP8Raster::Block<size>::unsafe_inter_predict( const MotionVector & mv, cons
 template <unsigned int size>
 template <class ReferenceType>
 void VP8Raster::Block<size>::safe_inter_predict( const MotionVector & mv, const ReferenceType & reference,
-					      const int source_column, const int source_row )
+					         const int source_column, const int source_row )
 {
   if ( (mv.x() & 7) == 0 and (mv.y() & 7) == 0 ) {
     contents_.forall_ij( [&] ( uint8_t & val, unsigned int column, unsigned int row )

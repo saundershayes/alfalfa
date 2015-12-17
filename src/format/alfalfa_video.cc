@@ -88,29 +88,43 @@ bool AlfalfaVideo::good() const
     and frame_db_.good() and track_db_.good();
 }
 
-bool AlfalfaVideo::can_combine( const AlfalfaVideo & video )
+size_t AlfalfaVideo::get_raster_list_size() const
 {
-  return (
-    raster_list_.size() == 0 or
-    (
-      video_manifest().info() == video.video_manifest().info() and
-      raster_list_ == video.raster_list_
-    )
-  );
+  return raster_list_.size();
 }
 
-pair<unordered_set<size_t>::iterator, unordered_set<size_t>::iterator>
-AlfalfaVideo::get_track_ids()
+RasterData AlfalfaVideo::get_raster( const size_t raster_index ) const
 {
-  return track_db_.get_track_ids();
+  return raster_list_.raster( raster_index );
 }
 
-pair<unordered_set<size_t>::iterator, unordered_set<size_t>::iterator>
-AlfalfaVideo::get_track_ids_for_switch(const size_t from_track_id, const size_t from_frame_index)
+bool AlfalfaVideo::has_raster( const size_t raster ) const
 {
-  unordered_set<size_t> to_track_ids = switch_mappings_.at(
-    make_pair( from_track_id, from_frame_index ) );
-  return make_pair( to_track_ids.begin(), to_track_ids.end() );
+  return raster_list_.has( raster );
+}
+
+pair<QualityDBCollectionSequencedAccess::iterator, QualityDBCollectionSequencedAccess::iterator>
+AlfalfaVideo::get_quality_data() const
+{
+  return make_pair( quality_db_.begin(), quality_db_.end() );
+}
+
+pair<QualityDBCollectionByApproximateRaster::iterator, QualityDBCollectionByApproximateRaster::iterator>
+AlfalfaVideo::get_quality_data_by_approximate_raster( const size_t approximate_raster ) const
+{
+  return quality_db_.search_by_approximate_raster( approximate_raster );
+}
+
+pair<QualityDBCollectionByOriginalRaster::iterator, QualityDBCollectionByOriginalRaster::iterator>
+AlfalfaVideo::get_quality_data_by_original_raster( const size_t original_raster ) const
+{
+  return quality_db_.search_by_original_raster( original_raster );
+}
+
+pair<FrameDataSetCollectionByOutputHash::iterator, FrameDataSetCollectionByOutputHash::iterator>
+AlfalfaVideo::get_frames_by_output_hash( const size_t output_hash ) const
+{
+  return frame_db_.search_by_output_hash( output_hash );
 }
 
 pair<FrameDataSetCollectionSequencedAccess::iterator, FrameDataSetCollectionSequencedAccess::iterator>
@@ -119,8 +133,57 @@ AlfalfaVideo::get_frames() const
   return make_pair( frame_db_.begin(), frame_db_.end() );
 }
 
+pair<TrackDBCollectionSequencedAccess::iterator, TrackDBCollectionSequencedAccess::iterator>
+AlfalfaVideo::get_track_data() const
+{
+  return make_pair( track_db_.begin(), track_db_.end() );
+}
+
+pair<SwitchDBCollectionSequencedAccess::iterator, SwitchDBCollectionSequencedAccess::iterator>
+AlfalfaVideo::get_switch_data() const
+{
+  return make_pair( switch_db_.begin(), switch_db_.end() );
+}
+
+bool AlfalfaVideo::equal_raster_lists( const AlfalfaVideo & video ) const
+{
+  if ( get_raster_list_size() != video.get_raster_list_size() )
+    return false;
+  size_t i;
+  for ( i = 0; i < get_raster_list_size(); i++ ) {
+    if ( get_raster( i ).hash != video.get_raster( i ).hash )
+      return false;
+  }
+  return true;
+}
+
+bool AlfalfaVideo::can_combine( const AlfalfaVideo & video ) const
+{
+  return (
+    raster_list_.size() == 0 or
+    (
+      get_info() == video.get_info() and
+      equal_raster_lists( video )
+    )
+  );
+}
+
+pair<unordered_set<size_t>::const_iterator, unordered_set<size_t>::const_iterator>
+AlfalfaVideo::get_track_ids() const
+{
+  return track_db_.get_track_ids();
+}
+
+pair<unordered_set<size_t>::iterator, unordered_set<size_t>::iterator>
+AlfalfaVideo::get_track_ids_for_switch(const size_t from_track_id, const size_t from_frame_index) const
+{
+  unordered_set<size_t> to_track_ids = switch_mappings_.at(
+    make_pair( from_track_id, from_frame_index ) );
+  return make_pair( to_track_ids.begin(), to_track_ids.end() );
+}
+
 pair<TrackDBIterator, TrackDBIterator>
-AlfalfaVideo::get_frames( const size_t track_id )
+AlfalfaVideo::get_frames( const size_t track_id ) const
 {
   size_t end_frame_index = track_db_.get_end_frame_index( track_id );
   TrackDBIterator begin = TrackDBIterator( track_id, 0, track_db_, frame_db_ );
@@ -129,7 +192,7 @@ AlfalfaVideo::get_frames( const size_t track_id )
 }
 
 pair<TrackDBIterator, TrackDBIterator>
-AlfalfaVideo::get_frames( const TrackDBIterator & it )
+AlfalfaVideo::get_frames( const TrackDBIterator & it ) const
 {
   size_t track_id = it.track_id();
   size_t start_frame_index = it.frame_index();
@@ -141,7 +204,7 @@ AlfalfaVideo::get_frames( const TrackDBIterator & it )
 }
 
 pair<TrackDBIterator, TrackDBIterator>
-AlfalfaVideo::get_frames( const SwitchDBIterator & it )
+AlfalfaVideo::get_frames( const SwitchDBIterator & it ) const
 {
   size_t track_id = it.to_track_id();
   size_t start_frame_index = it.to_frame_index();
@@ -153,13 +216,14 @@ AlfalfaVideo::get_frames( const SwitchDBIterator & it )
 }
 
 pair<SwitchDBIterator, SwitchDBIterator>
-AlfalfaVideo::get_frames( const TrackDBIterator & it, const size_t to_track_id )
+AlfalfaVideo::get_frames( const TrackDBIterator & it, const size_t to_track_id ) const
 {
   size_t from_track_id = it.track_id();
   size_t from_frame_index = it.frame_index();
   size_t end_switch_frame_index = switch_db_.get_end_switch_frame_index( from_track_id,
                                                                          to_track_id,
                                                                          from_frame_index );
+
   SwitchDBIterator begin = SwitchDBIterator( from_track_id, to_track_id,
                                              from_frame_index, 0, switch_db_, frame_db_ );
   SwitchDBIterator end = SwitchDBIterator( from_track_id, to_track_id,
@@ -168,9 +232,9 @@ AlfalfaVideo::get_frames( const TrackDBIterator & it, const size_t to_track_id )
   return make_pair( begin, end );
 }
 
-double AlfalfaVideo::get_quality( int raster_index, const FrameInfo & frame_info )
+double AlfalfaVideo::get_quality( int raster_index, const FrameInfo & frame_info ) const
 {
-  size_t original_raster = raster_list_.raster( raster_index );
+  size_t original_raster = raster_list_.raster( raster_index ).hash;
   size_t approximate_raster = frame_info.target_hash().output_hash;
   return quality_db_.search_by_original_and_approximate_raster(
     original_raster, approximate_raster ).quality;
@@ -185,41 +249,6 @@ WritableAlfalfaVideo::WritableAlfalfaVideo( const string & directory_name,
     ivf_writer_( directory_.ivf_filename(), fourcc, width, height, 24, 1 )
 {
   video_manifest_.set_info( VideoInfo( fourcc, width, height ) );
-}
-
-WritableAlfalfaVideo::WritableAlfalfaVideo( const string & directory_name,
-                                            const IVF & ivf )
-  : WritableAlfalfaVideo( directory_name, ivf.fourcc(), ivf.width(), ivf.height() )
-{}
-
-WritableAlfalfaVideo::WritableAlfalfaVideo( const string & directory_name,
-                                            const VideoInfo & info )
-  : WritableAlfalfaVideo( directory_name, info.fourcc, info.width, info.height )
-{}
-
-void WritableAlfalfaVideo::combine( const PlayableAlfalfaVideo & video )
-{
-  if ( not can_combine( video ) ) {
-    throw invalid_argument( "cannot combine: raster lists are not the same." );
-  }
-  else if ( raster_list_.size() == 0 ) {
-    raster_list_.merge( video.raster_list() );
-  }
-
-  video_manifest_.set_info( video.video_manifest().info() );
-  quality_db_.merge( video.quality_db() );
-  map<size_t, size_t> frame_id_mapping;
-  map<size_t, size_t> track_id_mapping;
-
-  for ( auto item = video.get_frames().first; item != video.get_frames().second; item++ ) {
-    size_t offset = ivf_writer_.append_frame( video.get_chunk( *item ) );
-    FrameInfo frame_info = *item;
-    frame_info.set_offset( offset );
-    frame_id_mapping[ item->frame_id() ] = frame_db_.insert( *item );
-  }
-
-  track_db_.merge( video.track_db(), frame_id_mapping, track_id_mapping );
-  switch_db_.merge( video.switch_db(), frame_id_mapping, track_id_mapping );
 }
 
 void WritableAlfalfaVideo::insert_frame( FrameInfo next_frame,
@@ -253,96 +282,17 @@ void WritableAlfalfaVideo::insert_frame( FrameInfo next_frame,
   );
 }
 
-void WritableAlfalfaVideo::write_ivf( const string & filename )
+FrameInfo WritableAlfalfaVideo::import_serialized_frame( const SerializedFrame & frame )
 {
-  IVF ivf_file( filename );
+  if ( not frame_db_.has_frame_name( frame.name() ) ) {
+    size_t offset = ivf_writer_.append_frame( frame.chunk() );
+    FrameInfo fi( frame.name(), offset, frame.chunk().size() );
 
-  for ( unsigned int i = 0; i < ivf_file.frame_count(); i++ ) {
-    ivf_writer_.append_frame( ivf_file.frame( i ) );
+    frame_db_.insert( fi );
+
+    return fi;
   }
-}
-
-size_t WritableAlfalfaVideo::import_frame( FrameInfo fi, const Chunk & chunk )
-{
-  size_t offset = ivf_writer_.append_frame( chunk );
-  fi.set_offset( offset );
-
-  SourceHash source_hash = fi.source_hash();
-  TargetHash target_hash = fi.target_hash();
-
-  if ( not frame_db_.has_frame_name( source_hash, target_hash ) ) {
-    return frame_db_.insert( fi );
-  }
-  return frame_db_.search_by_frame_name( source_hash, target_hash ).frame_id();
-}
-
-void WritableAlfalfaVideo::import( const string & filename )
-{
-  write_ivf( filename );
-  TrackingPlayer player( directory_.ivf_filename() );
-
-  size_t track_id = 0;
-
-  while ( not player.eof() ) {
-    auto next_frame_data = player.serialize_next();
-    FrameInfo next_frame( next_frame_data.first );
-
-    size_t original_raster = next_frame.target_hash().output_hash;
-    double quality = 1.0;
-
-    insert_frame( next_frame, original_raster, quality, track_id );
-  }
-
-  save();
-}
-
-void WritableAlfalfaVideo::import( const string & filename,
-                                   PlayableAlfalfaVideo & original,
-                                   const size_t ref_track_id )
-{
-  write_ivf( filename );
-  TrackingPlayer player( directory_.ivf_filename() );
-
-  FramePlayer original_player( original.video_manifest().width(), original.video_manifest().height() );
-  auto track_frames = original.get_frames( ref_track_id );
-
-  size_t track_id = 0;
-
-  while ( not player.eof() ) {
-    auto next_frame_data = player.serialize_next();
-    FrameInfo next_frame( next_frame_data.first );
-
-    size_t original_raster = next_frame.target_hash().output_hash;
-    double quality = 1.0;
-
-    if ( next_frame.target_hash().shown and next_frame_data.second.initialized() ) {
-      while ( track_frames.first != track_frames.second and not track_frames.first->shown() ) {
-        track_frames.first++;
-      }
-
-      if ( track_frames.first != track_frames.second ) {
-        auto original_uncompressed_frame = original_player.decode(
-          original.get_chunk( *track_frames.first ) );
-
-        quality = original_uncompressed_frame.get().get().quality(
-          next_frame_data.second.get() );
-
-        original_raster = track_frames.first->target_hash().output_hash;
-
-        track_frames.first++;
-      }
-      else {
-        throw logic_error( "bad original video" );
-      }
-    }
-    else if ( not next_frame_data.second.initialized() ) {
-      throw invalid_argument( "inconsistent frame db" );
-    }
-
-    insert_frame( next_frame, original_raster, quality, track_id );
-  }
-
-  save();
+  return frame_db_.search_by_frame_name( frame.name() );
 }
 
 void
@@ -355,6 +305,7 @@ WritableAlfalfaVideo::insert_switch_frames( const TrackDBIterator & origin_itera
   size_t to_track_id = dest_iterator.track_id();
   size_t to_frame_index = dest_iterator.frame_index();
   size_t switch_frame_index = 0;
+
   for (FrameInfo frame : frames) {
     size_t frame_id = frame_db_.insert( frame );
     SwitchData switch_data = SwitchData( from_track_id, from_frame_index, to_track_id,
@@ -364,13 +315,25 @@ WritableAlfalfaVideo::insert_switch_frames( const TrackDBIterator & origin_itera
   }
 }
 
+size_t
+WritableAlfalfaVideo::insert_frame_data( FrameInfo frame_info,
+                                         const Chunk & chunk )
+{
+  if ( not frame_db_.has_frame_name( frame_info.name() ) ) {
+    size_t offset = ivf_writer_.append_frame( chunk );
+    frame_info.set_offset( offset );
+  }
+  return frame_db_.insert( frame_info );
+}
+
 bool WritableAlfalfaVideo::save()
 {
   return video_manifest_.serialize() and
     raster_list_.serialize() and
     quality_db_.serialize() and
     track_db_.serialize() and
-    frame_db_.serialize();
+    frame_db_.serialize() and
+    switch_db_.serialize();
 }
 
 /* PlayableAlfalfaVideo */
@@ -386,10 +349,13 @@ const Chunk PlayableAlfalfaVideo::get_chunk( const FrameInfo & frame_info ) cons
 }
 
 void PlayableAlfalfaVideo::encode( const size_t track_id, vector<string> vpxenc_args,
-                                   const string & destination )
+                                   const string & destination ) const
 {
   TempFile fpf_file( "fpf" );
-  int total_passes = 2;
+  const int total_passes = 2;
+
+  // Newer libvpx versions default to vp9 so explicitly state that we want vp8
+  vpxenc_args.push_back( "--codec=vp8" );
 
   // adding necessary output switches
   vpxenc_args.push_back( "-o" );
@@ -400,45 +366,96 @@ void PlayableAlfalfaVideo::encode( const size_t track_id, vector<string> vpxenc_
   ostringstream vpxenc_command;
   vpxenc_command << VPXENC_EXECUTABLE << " ";
 
-  for_each( vpxenc_args.begin(), vpxenc_args.end(), [ &vpxenc_command ]( string & s ) {
-      vpxenc_command << s <<  " ";
-    }
-  );
+  for ( const auto & s : vpxenc_args ) {
+    vpxenc_command << s <<  " ";
+  }
 
   for ( int pass = 1; pass <= total_passes; pass++ ) {
-    vector<string> full_args = vpxenc_args;
-
     ostringstream stage_command( vpxenc_command.str(), ios_base::app | ios_base::out );
     stage_command << "--passes=" << total_passes
                   << " --pass=" << pass;
 
-    Subprocess proc;
-    proc.call( stage_command.str(), "w" );
+    Subprocess proc( stage_command.str(), "w" );
 
-    FramePlayer player( video_manifest().width(), video_manifest().height() );
+    FramePlayer player( get_info().width, get_info().height );
 
-    ostringstream ss;
-    ss << "YUV4MPEG2 W" << video_manifest().width() << " "
-      << "F1:1 "
-      << "H" << video_manifest().height() << " "
-      << "Ip A0:0 C420 C420jpeg XYSCSS=420JPEG\n";
+    /* yuv4mpeg header */
+    proc.write( "YUV4MPEG2 W" + to_string( get_info().width ) + " "
+		+ "F1:1 H" + to_string( get_info().height ) + " "
+		+ "Ip A0:0 C420 C420jpeg XYSCSS=420JPEG\n" );
 
-    string header( ss.str() );
-    proc.write_string( header );
+    for ( auto track_frames = get_frames( track_id ); track_frames.first != track_frames.second; track_frames.first++ ) {
+      Optional<RasterHandle> raster_handle = player.decode( get_chunk( *track_frames.first ) );
 
-    for( auto track_frames = get_frames( track_id ); track_frames.first != track_frames.second; track_frames.first++ ) {
-      Optional<RasterHandle> uncompressed_frame = player.decode( get_chunk( *track_frames.first ) );
+      if ( raster_handle.initialized() ) {
+	const string frame_tag { "FRAME\n" };
+        proc.write( frame_tag );
 
-      if ( uncompressed_frame.initialized() ) {
-        proc.write_string( "FRAME\n" );
-        uncompressed_frame.get().get().dump( proc.stream() );
+	for ( const auto & chunk : raster_handle.get().get().display_rectangle_as_planar() ) {
+	  proc.write( chunk );
+	}
       }
     }
 
-    int status = proc.wait();
-
-    if ( status != 0 ) {
-      throw runtime_error( "encode failed" );
-    }
+    proc.close(); /* may throw an exception, so call explicitly instead of letting destructor do it */
   }
 }
+
+void
+combine( WritableAlfalfaVideo & combined_video, const PlayableAlfalfaVideo & video )
+{
+  if ( not combined_video.can_combine( video ) ) {
+    throw invalid_argument( "cannot combine: raster lists are not the same." );
+  }
+  else if ( combined_video.get_raster_list_size() == 0 ) {
+    size_t i;
+    for ( i = 0; i < video.get_raster_list_size(); i++ ) {
+      combined_video.insert_raster( video.get_raster( i ) );
+    }
+  }
+
+  for ( auto quality_data = video.get_quality_data();
+        quality_data.first != quality_data.second; quality_data.first++ ) {
+    combined_video.insert_quality_data( *quality_data.first );
+  }
+
+  map<size_t, size_t> frame_id_mapping;
+  map<size_t, size_t> track_id_mapping;
+
+  for ( auto frame_data = video.get_frames();
+        frame_data.first != frame_data.second; frame_data.first++ ) {
+    FrameInfo frame_info = *frame_data.first;
+    frame_id_mapping[ frame_info.frame_id() ] = combined_video.insert_frame_data(
+      frame_info, video.get_chunk( frame_info ) );
+  }
+
+  for ( auto track_data = video.get_track_data();
+        track_data.first != track_data.second; track_data.first++ ) {
+    TrackData item = *track_data.first;
+    if ( track_id_mapping.count( item.track_id ) > 0 ) {
+      item.track_id = track_id_mapping[ item.track_id ];
+    }
+    else if ( combined_video.has_track( item.track_id ) ) {
+      size_t new_track_id = item.track_id;
+      while ( combined_video.has_track( new_track_id ) ) {
+        new_track_id++;
+      }
+      track_id_mapping[ item.track_id ] = new_track_id;
+      item.track_id = new_track_id;
+    } else {
+      track_id_mapping[ item.track_id ] = item.track_id;
+    }
+    item.frame_id = frame_id_mapping[ item.frame_id ];
+    combined_video.insert_track_data( item );
+  }
+
+  for ( auto switch_data = video.get_switch_data();
+        switch_data.first != switch_data.second; switch_data.first++ ) {
+    SwitchData item = *switch_data.first;
+    item.from_track_id = track_id_mapping[ item.from_track_id ];
+    item.to_track_id = track_id_mapping[ item.to_track_id ];
+    item.frame_id = frame_id_mapping[ item.frame_id ];
+    combined_video.insert_switch_data( item );
+  }
+}
+

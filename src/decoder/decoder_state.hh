@@ -5,57 +5,6 @@
 #include "frame.hh"
 
 template <class HeaderType>
-void ProbabilityTables::coeff_prob_update( const HeaderType & header )
-{
-  /* token probabilities (if given in frame header) */
-  for ( unsigned int i = 0; i < BLOCK_TYPES; i++ ) {
-    for ( unsigned int j = 0; j < COEF_BANDS; j++ ) {
-      for ( unsigned int k = 0; k < PREV_COEF_CONTEXTS; k++ ) {
-	for ( unsigned int l = 0; l < ENTROPY_NODES; l++ ) {
-	  const auto & node = header.token_prob_update.at( i ).at( j ).at( k ).at( l ).coeff_prob;
-	  if ( node.initialized() ) {
-	    coeff_probs.at( i ).at( j ).at( k ).at( l ) = node.get();
-	  }
-	}
-      }
-    }
-  }
-}
-
-template <unsigned int size>
-static void assign( SafeArray< Probability, size > & dest, const Array< Unsigned<8>, size > & src )
-{
-  for ( unsigned int i = 0; i < size; i++ ) {
-    dest.at( i ) = src.at( i );
-  }
-}
-
-template <class HeaderType>
-void ProbabilityTables::update( const HeaderType & header )
-{
-  coeff_prob_update( header );
-
-  /* update intra-mode probabilities in inter macroblocks */
-  if ( header.intra_16x16_prob.initialized() ) {
-    assign( y_mode_probs, header.intra_16x16_prob.get() );
-  }
-
-  if ( header.intra_chroma_prob.initialized() ) {
-    assign( uv_mode_probs, header.intra_chroma_prob.get() );
-  }
-
-  /* update motion vector component probabilities */
-  for ( uint8_t i = 0; i < header.mv_prob_update.size(); i++ ) {
-    for ( uint8_t j = 0; j < header.mv_prob_update.at( i ).size(); j++ ) {
-      const auto & prob = header.mv_prob_update.at( i ).at( j );
-      if ( prob.initialized() ) {
-	motion_vector_probs.at( i ).at( j ) = prob.get();
-      }
-    }
-  }
-}
-
-template <class HeaderType>
 void Segmentation::update( const HeaderType & header )
 {
   assert( header.update_segmentation.initialized() );
@@ -100,7 +49,6 @@ inline KeyFrame DecoderState::parse_and_apply<KeyFrame>( const UncompressedChunk
 
   /* parse keyframe header */
   KeyFrame myframe( uncompressed_chunk.show_frame(),
-		    uncompressed_chunk.experimental(),
 		    width, height, first_partition );
 
   /* reset persistent decoder state to default values */
@@ -136,15 +84,7 @@ inline InterFrame DecoderState::parse_and_apply<InterFrame>( const UncompressedC
 
   /* parse interframe header */
   InterFrame myframe( uncompressed_chunk.show_frame(),
-		      uncompressed_chunk.experimental(),
 		      width, height, first_partition );
-
-  /* update probability tables if prescribed by continuation header */
-  if ( myframe.continuation_header().initialized()
-       // FIXME ask keith replacement_entropy_header should not be optional?
-       and myframe.continuation_header().get().replacement_entropy_header.initialized() ) {
-    probability_tables.update( myframe.continuation_header().get().replacement_entropy_header.get() );
-  }
 
   /* update probability tables. replace persistent copy if prescribed in header */
   ProbabilityTables frame_probability_tables( probability_tables );
@@ -181,6 +121,43 @@ inline InterFrame DecoderState::parse_and_apply<InterFrame>( const UncompressedC
   if ( segmentation.initialized() ) {
     myframe.update_segmentation( segmentation.get().map );
   }
+
+  myframe.parse_tokens( uncompressed_chunk.dct_partitions( myframe.dct_partition_count() ),
+			frame_probability_tables );
+
+  return myframe;
+}
+
+template <>
+inline StateUpdateFrame DecoderState::parse_and_apply<StateUpdateFrame>( const UncompressedChunk & uncompressed_chunk )
+{
+  assert( not uncompressed_chunk.key_frame() );
+
+  /* initialize Boolean decoder for the frame and macroblock headers */
+  BoolDecoder first_partition( uncompressed_chunk.first_partition() );
+
+  /* parse interframe header */
+  StateUpdateFrame myframe( false, width, height, first_partition );
+
+  probability_tables.update( myframe.header() );
+
+  return myframe;
+}
+
+template <>
+inline RefUpdateFrame DecoderState::parse_and_apply<RefUpdateFrame>( const UncompressedChunk & uncompressed_chunk )
+{
+  assert( not uncompressed_chunk.key_frame() );
+
+  BoolDecoder first_partition( uncompressed_chunk.first_partition() );
+
+  RefUpdateFrame myframe( false, width, height, first_partition );
+
+  ProbabilityTables frame_probability_tables( probability_tables );
+  frame_probability_tables.coeff_prob_update( myframe.header() );
+
+  /* parse the frame */
+  myframe.parse_macroblock_headers( first_partition, frame_probability_tables );
 
   myframe.parse_tokens( uncompressed_chunk.dct_partitions( myframe.dct_partition_count() ),
 			frame_probability_tables );

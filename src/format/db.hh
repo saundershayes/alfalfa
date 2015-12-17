@@ -61,7 +61,6 @@ public:
   BasicDatabase( const std::string & filename, const std::string & magic_number,
     OpenMode mode = OpenMode::READ );
   void insert( RecordType record );
-  void merge( const BasicDatabase & db );
 
   typename SequencedAccess::iterator begin() { return this->collection_.get<SequencedTag>().begin(); }
   typename SequencedAccess::iterator begin() const { return this->collection_.get<SequencedTag>().begin(); }
@@ -99,15 +98,6 @@ void BasicDatabase<RecordType, RecordProtobufType, Collection, SequencedTag>
 }
 
 template<class RecordType, class RecordProtobufType, class Collection, class SequencedTag>
-void BasicDatabase<RecordType, RecordProtobufType, Collection, SequencedTag>
-  ::merge( const BasicDatabase & db )
-{
-  for ( auto const & item : db.collection_.get<SequencedTag>() ) {
-    insert( item );
-  }
-}
-
-template<class RecordType, class RecordProtobufType, class Collection, class SequencedTag>
 bool BasicDatabase<RecordType, RecordProtobufType, Collection, SequencedTag>
   ::serialize() const
 {
@@ -122,7 +112,7 @@ bool BasicDatabase<RecordType, RecordProtobufType, Collection, SequencedTag>
 
   // Writing entries
   for ( const RecordType & it : collection_.get<SequencedTag>() ) {
-    RecordProtobufType message = to_protobuf( it );
+    RecordProtobufType message = it.to_protobuf();
 
     if ( not serializer.write_protobuf( message ) ) {
       return false;
@@ -149,7 +139,7 @@ bool BasicDatabase<RecordType, RecordProtobufType, Collection, SequencedTag>
   RecordProtobufType message;
 
   while ( deserializer.read_protobuf( message ) ) {
-    RecordType record = from_protobuf( message );
+    RecordType record = RecordType( message );
     insert( record );
   }
 

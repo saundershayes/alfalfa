@@ -55,7 +55,7 @@ typedef multi_index_container
   RasterData,
   indexed_by
   <
-    ordered_unique
+    ordered_non_unique
     <
       tag<RasterListByHashTag>,
       member<RasterData, size_t, &RasterData::hash>
@@ -76,6 +76,7 @@ RasterListCollectionByHash;
 typedef RasterListCollection::index<RasterListRandomAccessTag>::type
 RasterListCollectionRandomAccess;
 
+
 class RasterList : public BasicDatabase<RasterData, AlfalfaProtobufs::RasterData,
   RasterListCollection, RasterListSequencedTag>
 {
@@ -86,7 +87,7 @@ public:
   {}
 
   bool has( const size_t raster_hash ) const;
-  size_t raster( const size_t raster_index );
+  RasterData raster( const size_t raster_index ) const;
   bool operator==( const RasterList & other ) const;
   bool operator!=( const RasterList & other ) const;
 };
@@ -106,7 +107,7 @@ typedef multi_index_container
   QualityData,
   indexed_by
   <
-    hashed_unique
+    hashed_non_unique
     <
       tag<QualityDBByOriginalAndApproximateRasterTag>,
       composite_key
@@ -139,6 +140,9 @@ typedef QualityDBCollection::index<QualityDBByOriginalRasterTag>::type
 QualityDBCollectionByOriginalRaster;
 typedef QualityDBCollection::index<QualityDBByApproximateRasterTag>::type
 QualityDBCollectionByApproximateRaster;
+typedef QualityDBCollection::index<QualityDBSequencedTag>::type
+QualityDBCollectionSequencedAccess;
+
 
 class QualityDB : public BasicDatabase<QualityData, AlfalfaProtobufs::QualityData,
   QualityDBCollection, QualityDBSequencedTag>
@@ -150,11 +154,11 @@ public:
   {}
 
   QualityData
-  search_by_original_and_approximate_raster( const size_t original_raster, const size_t approximate_raster );
-  std::pair<QualityDBCollectionByOriginalRaster::iterator, QualityDBCollectionByOriginalRaster::iterator>
-  search_by_original_raster( const size_t original_raster );
-  std::pair<QualityDBCollectionByApproximateRaster::iterator, QualityDBCollectionByApproximateRaster::iterator>
-  search_by_approximate_raster( const size_t approximate_raster );
+  search_by_original_and_approximate_raster( const size_t original_raster, const size_t approximate_raster ) const;
+  std::pair<QualityDBCollectionByOriginalRaster::const_iterator, QualityDBCollectionByOriginalRaster::const_iterator>
+  search_by_original_raster( const size_t original_raster ) const;
+  std::pair<QualityDBCollectionByApproximateRaster::const_iterator, QualityDBCollectionByApproximateRaster::const_iterator>
+  search_by_approximate_raster( const size_t approximate_raster ) const;
 };
 
 /*
@@ -190,6 +194,9 @@ typedef multi_index_container
 
 typedef TrackDBCollection::index<TrackDBByTrackIdAndFrameIndexTag>::type
 TrackDBCollectionByTrackIdAndFrameIndex;
+typedef TrackDBCollection::index<TrackDBSequencedTag>::type
+TrackDBCollectionSequencedAccess;
+
 
 class TrackDB : public BasicDatabase<TrackData, AlfalfaProtobufs::TrackData,
   TrackDBCollection, TrackDBSequencedTag>
@@ -212,17 +219,14 @@ public:
 
   size_t insert( TrackData td );
 
-  std::pair<std::unordered_set<size_t>::iterator, std::unordered_set<size_t>::iterator>
-  get_track_ids();
+  std::pair<std::unordered_set<size_t>::const_iterator, std::unordered_set<size_t>::const_iterator>
+  get_track_ids() const;
 
   const TrackData &
-  get_frame( const size_t & track_id, const size_t & frame_index );
+  get_frame( const size_t & track_id, const size_t & frame_index ) const;
 
   size_t get_end_frame_index( const size_t track_id ) const;
   bool has_track( const size_t track_id ) const;
-  void merge( const TrackDB & db,
-              std::map<size_t, size_t> & frame_id_mapping,
-              std::map<size_t, size_t> & track_id_mapping );
 };
 
 /*
@@ -234,11 +238,13 @@ class TrackDBIterator : std::iterator<std::forward_iterator_tag, FrameInfo>
   private:
     size_t track_id_;
     size_t frame_index_;
-    TrackDB & track_db_;
-    FrameDB & frame_db_;
+    const TrackDB & track_db_;
+    const FrameDB & frame_db_;
 
   public:
-    TrackDBIterator( size_t track_id, size_t start_frame_index, TrackDB & track_db, FrameDB & frame_db )
+    TrackDBIterator( size_t track_id, size_t start_frame_index,
+                     const TrackDB & track_db,
+                     const FrameDB & frame_db )
     : track_id_( track_id ), frame_index_( start_frame_index ), track_db_( track_db ),
       frame_db_( frame_db )
     {}
@@ -305,6 +311,9 @@ typedef SwitchDBCollection::index<SwitchDBHashedByTrackIdsAndFrameIndexTag>::typ
 SwitchDBCollectionHashedByTrackIdsAndFrameIndex;
 typedef SwitchDBCollection::index<SwitchDBOrderedByTrackIdsAndFrameIndicesTag>::type
 SwitchDBCollectionOrderedByTrackIdsAndFrameIndices;
+typedef SwitchDBCollection::index<SwitchDBSequencedTag>::type
+SwitchDBCollectionSequencedAccess;
+
 
 class SwitchDB : public BasicDatabase<SwitchData, AlfalfaProtobufs::SwitchData,
   SwitchDBCollection, SwitchDBSequencedTag>
@@ -317,18 +326,15 @@ public:
 
   size_t get_end_switch_frame_index( const size_t from_track_id,
                                      const size_t to_track_id,
-                                     const size_t from_frame_index );
+                                     const size_t from_frame_index ) const;
   bool has_switch( const size_t from_track_id, const size_t to_track_id,
-                   const size_t from_frame_index );
+                   const size_t from_frame_index ) const;
   size_t get_to_frame_index( const size_t from_track_id,
                              const size_t to_track_id,
-                             const size_t from_frame_index );
+                             const size_t from_frame_index ) const;
   const SwitchData &
   get_frame( const size_t from_track_id, const size_t to_track_id,
-             const size_t from_frame_index, const size_t switch_frame_index );
-  void merge( const SwitchDB & db,
-              std::map<size_t, size_t> & frame_id_mapping,
-              std::map<size_t, size_t> & track_id_mapping );
+             const size_t from_frame_index, const size_t switch_frame_index ) const;
 };
 
 /*
@@ -343,13 +349,13 @@ class SwitchDBIterator : std::iterator<std::forward_iterator_tag, FrameInfo>
     size_t from_frame_index_;
     size_t switch_frame_index_;
     size_t to_frame_index_;
-    SwitchDB & switch_db_;
-    FrameDB & frame_db_;
+    const SwitchDB & switch_db_;
+    const FrameDB & frame_db_;
 
   public:
     SwitchDBIterator( size_t from_track_id, size_t to_track_id, size_t from_frame_index,
-                      size_t start_switch_frame_index, SwitchDB & switch_db,
-                      FrameDB & frame_db )
+                      size_t start_switch_frame_index, const SwitchDB & switch_db,
+                      const FrameDB & frame_db )
     : from_track_id_( from_track_id ), to_track_id_( to_track_id ),
       from_frame_index_(from_frame_index), switch_frame_index_(start_switch_frame_index),
       to_frame_index_(0), switch_db_(switch_db), frame_db_(frame_db)

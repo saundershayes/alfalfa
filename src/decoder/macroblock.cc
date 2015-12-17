@@ -7,6 +7,8 @@
 #include "quantization.cc"
 #include "tree.cc"
 
+#include <algorithm>
+
 using namespace std;
 
 static bmode implied_subblock_mode( const mbmode y_mode )
@@ -21,28 +23,23 @@ static bmode implied_subblock_mode( const mbmode y_mode )
 }
 
 template <class FrameHeaderType, class MacroblockHeaderType>
-Macroblock<FrameHeaderType, MacroblockHeaderType>::Macroblock( const typename TwoD< Macroblock >::Context & c,
+Macroblock<FrameHeaderType, MacroblockHeaderType>::Macroblock( const typename TwoD<Macroblock>::Context & c,
 							       BoolDecoder & data,
 							       const FrameHeaderType & frame_header,
-							       const ProbabilityArray< num_segments > & mb_segment_tree_probs,
+							       const ProbabilityArray<num_segments> & mb_segment_tree_probs,
 							       const ProbabilityTables & probability_tables,
-							       const Optional< ContinuationHeader > & continuation_header,
-							       TwoD< Y2Block > & frame_Y2,
-							       TwoD< YBlock > & frame_Y,
-							       TwoD< UVBlock > & frame_U,
-							       TwoD< UVBlock > & frame_V )
+							       TwoD<Y2Block> & frame_Y2,
+							       TwoD<YBlock> & frame_Y,
+							       TwoD<UVBlock> & frame_U,
+							       TwoD<UVBlock> & frame_V )
   : context_( c ),
-    segment_id_update_( frame_header.update_segmentation.initialized()
-			and frame_header.update_segmentation.get().update_mb_segmentation_map,
+    segment_id_update_( frame_header.update_segmentation.initialized() and
+			frame_header.update_segmentation.get().update_mb_segmentation_map,
 			data, mb_segment_tree_probs ),
     segment_id_( 0 ),
     mb_skip_coeff_( frame_header.prob_skip_false.initialized(),
 		    data, frame_header.prob_skip_false.get_or( 0 ) ),
     header_( data, frame_header ),
-    continuation_( continuation_header.initialized()
-		   and inter_coded()
-		   and continuation_header.get().is_missing( header_.reference() ) ),
-    loopfilter_skip_subblock_edges_( continuation_, data ),
     Y2_( frame_Y2.at( c.column, c.row ) ),
     Y_( frame_Y, c.column * 4, c.row * 4 ),
     U_( frame_U, c.column * 2, c.row * 2 ),
@@ -63,8 +60,6 @@ InterFrameMacroblock::Macroblock( const typename TwoD< Macroblock >::Context & c
     segment_id_( old_macroblocks.at( c.column, c.row ).segment_id_ ),
     mb_skip_coeff_( old_macroblocks.at( c.column, c.row ).mb_skip_coeff_ ),
     header_( old_macroblocks.at( c.column, c.row ).header_ ),
-    continuation_( false ),
-    loopfilter_skip_subblock_edges_( old_macroblocks.at( c.column, c.row ).loopfilter_skip_subblock_edges_ ),
     Y2_( frame_Y2.at( c.column, c.row ) ),
     Y_( frame_Y, c.column * 4, c.row * 4 ),
     U_( frame_U, c.column * 2, c.row * 2 ),
@@ -119,19 +114,19 @@ void InterFrameMacroblock::set_base_motion_vector( const MotionVector & mv )
 }
 
 template <>
-const MotionVector & InterFrameMacroblock::base_motion_vector( void ) const
+const MotionVector & InterFrameMacroblock::base_motion_vector() const
 {
   return Y_.at( 3, 3 ).motion_vector();
 }
 
 template <>
-bool KeyFrameMacroblock::inter_coded( void ) const
+bool KeyFrameMacroblock::inter_coded() const
 {
   return false;
 }
 
 template <>
-bool InterFrameMacroblock::inter_coded( void ) const
+bool InterFrameMacroblock::inter_coded() const
 {
   return header_.is_inter_mb;
 }
@@ -395,12 +390,26 @@ void InterFrameMacroblock::decode_prediction_modes( BoolDecoder & data,
 						 Y_.at( column * 2, row * 2 + 1 ).motion_vector(),
 						 Y_.at( column * 2 + 1, row * 2 + 1 ).motion_vector() ) );
       } );
-
-    if ( continuation_ ) {
-      Y_.forall( [&] ( YBlock & block ) { block.set_Y_without_Y2(); } );
-    }
   }
 }
+
+template<>
+void RefUpdateFrameMacroblock::decode_prediction_modes( BoolDecoder &,
+						        const ProbabilityTables & )
+{
+  /* Unset coded since pixel diffs don't need the Y2 block */
+  Y2_.set_coded( false );
+
+  Y_.forall( [&]( YBlock & block )
+	     {
+	       block.set_Y_without_Y2();
+	     } );
+}
+
+template<>
+void StateUpdateFrameMacroblock::decode_prediction_modes( BoolDecoder &,
+						          const ProbabilityTables & )
+{}
 
 InterFrameMacroblockHeader::InterFrameMacroblockHeader( BoolDecoder & data,
 							const InterFrameHeader & frame_header )
@@ -421,7 +430,7 @@ void Macroblock<FrameHeaderType, MacroblockHeaderType>::parse_tokens( BoolDecode
   }
 
   /* parse Y2 block if present */
-  if ( Y2_.coded() and (not continuation_) ) {
+  if ( Y2_.coded() ) {
     Y2_.parse_tokens( data, probability_tables );
     has_nonzero_ |= Y2_.has_nonzero();
   }
@@ -489,14 +498,10 @@ void Macroblock<FrameHeaderType, MacroblockHeaderType>::reconstruct_intra( const
 }
 
 template <>
-void InterFrameMacroblock::reconstruct_continuation( const RasterHandle & continuation,
-						     VP8Raster::Macroblock & raster ) const
+void RefUpdateFrameMacroblock::reconstruct_continuation( const VP8Raster & reference,
+						         VP8Raster::Macroblock & raster ) const
 {
-  assert( continuation_ );
-
   const MotionVector zeromv;
-
-  const VP8Raster & reference = continuation;
 
   raster.Y.inter_predict( zeromv, reference.Y() );
   raster.U.inter_predict( zeromv, reference.U() );
@@ -519,8 +524,6 @@ void InterFrameMacroblock::reconstruct_inter( const Quantizer & quantizer,
 					      const References & references,
 					      VP8Raster::Macroblock & raster ) const
 {
-  assert( not continuation_ );
-
   const VP8Raster & reference = references.at( header_.reference() );
 
   if ( Y2_.prediction_mode() == SPLITMV ) {
@@ -534,6 +537,7 @@ void InterFrameMacroblock::reconstruct_inter( const Quantizer & quantizer,
 								       reference.V() ); } );
 
     if ( has_nonzero_ ) {
+      /* Add residue */
       Y_.forall_ij( [&] ( const YBlock & block, const unsigned int column, const unsigned int row )
 		    { block.dequantize( quantizer ).idct_add( raster.Y_sub.at( column, row ) ); } );
       U_.forall_ij( [&] ( const UVBlock & block, const unsigned int column, const unsigned int row )
@@ -561,7 +565,7 @@ void Macroblock<FrameHeaderType, MacroblockHeaderType>::loopfilter( const Option
 								    const FilterParameters & loopfilter,
 								    VP8Raster::Macroblock & raster ) const
 {
-  const bool skip_subblock_edges = loopfilter_skip_subblock_edges_.get_or( Y2_.coded() and ( not has_nonzero_ ) );
+  const bool skip_subblock_edges = Y2_.coded() and ( not has_nonzero_ );
 
   /* which filter are we using? */
   FilterParameters loopfilter_in_use( loopfilter );
@@ -596,6 +600,18 @@ void Macroblock<FrameHeaderType, MacroblockHeaderType>::loopfilter( const Option
   }
 }
 
+template <>
+void RefUpdateFrameMacroblock::loopfilter( const Optional< FilterAdjustments > &,
+					   const FilterParameters &,
+					   VP8Raster::Macroblock & ) const
+{}
+
+template <>
+void StateUpdateFrameMacroblock::loopfilter( const Optional< FilterAdjustments > &,
+					     const FilterParameters &,
+					     VP8Raster::Macroblock & ) const
+{}
+
 reference_frame InterFrameMacroblockHeader::reference( void ) const
 {
   if ( not is_inter_mb ) {
@@ -613,5 +629,7 @@ reference_frame InterFrameMacroblockHeader::reference( void ) const
   return ALTREF_FRAME;
 }
 
-template class Macroblock< KeyFrameHeader, KeyFrameMacroblockHeader >;
-template class Macroblock< InterFrameHeader, InterFrameMacroblockHeader >;
+template class Macroblock<KeyFrameHeader, KeyFrameMacroblockHeader>;
+template class Macroblock<InterFrameHeader, InterFrameMacroblockHeader>;
+template class Macroblock<RefUpdateFrameHeader, RefUpdateFrameMacroblockHeader>;
+template class Macroblock<StateUpdateFrameHeader, StateUpdateFrameMacroblockHeader>;

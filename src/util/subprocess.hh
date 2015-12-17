@@ -1,24 +1,26 @@
 #ifndef SUBPROCESS_HH
 #define SUBPROCESS_HH
 
-#include <stdio.h>
+#include <cstdio>
 #include <string>
 #include <memory>
 
+#include "chunk.hh"
+
+/* wraps popen */
 class Subprocess
 {
 private:
-  std::unique_ptr<FILE> file_{ nullptr };
+  struct Deleter { void operator() ( FILE * x ) const; };
+  std::unique_ptr<FILE, Deleter> file_;
 
 public:
-  Subprocess();
-  void call( const std::string & command, const std::string & type = "w" );
+  Subprocess( const std::string & command, const std::string & type );
 
-  size_t write_string( const std::string & str );
-  FILE * stream() { return file_.get(); }
+  void write( const Chunk & chunk );
 
-  int wait();
-  ~Subprocess();
+  void close(); /* may throw exception, so better for caller to call explicitly
+		   instead of letting destructor possibly throw */
 };
 
 #endif /* SUBPROCESS_HH */

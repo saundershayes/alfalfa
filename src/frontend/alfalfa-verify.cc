@@ -35,13 +35,8 @@ int main( int argc, char *argv[] )
     string alf_path( argv[ 1 ] );
     PlayableAlfalfaVideo alf( alf_path );
 
-    //Get the track database and the frame database
-    TrackDB track_db = alf.track_db();
-    FrameDB frame_db = alf.frame_db();
-
     //Get all the track ids for a video
-    pair<unordered_set<size_t>::iterator, unordered_set<size_t>::iterator>
-    track_ids_iterator = alf.get_track_ids();
+    auto track_ids_iterator = alf.get_track_ids();
 
     //Create a set to keep track of frames in the track db
     set<string> frames_in_track_db = *new set<string>();
@@ -56,7 +51,7 @@ int main( int argc, char *argv[] )
       TrackDBIterator track_end = track_db_iterator.second;
 
       //Get the frame player, which contains the decoder
-      FramePlayer player( alf.video_manifest().width(), alf.video_manifest().height() );
+      FramePlayer player( alf.get_info().width, alf.get_info().height );
 
       //Loop over the entire track frame by frame
       while( track_beginning != track_end ) {
@@ -85,11 +80,10 @@ int main( int argc, char *argv[] )
     }
 
     //Get iterators to the frame db
-    pair<FrameDataSetCollectionSequencedAccess::iterator, FrameDataSetCollectionSequencedAccess::iterator>
-    frame_db_iterator = alf.get_frames();
-    FrameDataSetCollectionSequencedAccess::iterator frames_beginning = frame_db_iterator.first;
-    FrameDataSetCollectionSequencedAccess::iterator frames_end = frame_db_iterator.second;
-
+    auto frame_db_iterator = alf.get_frames();
+    auto frames_beginning = frame_db_iterator.first;
+    auto frames_end = frame_db_iterator.second;
+    
     //Iterate through the frame db and add all the frame names to a set
     set<string> frames_in_frame_db = *new set<string>();
     while( frames_beginning != frames_end ) {
@@ -120,6 +114,6 @@ int main( int argc, char *argv[] )
   if( return_code == EXIT_SUCCESS ) {
     cout << "SUCCESS: alfalfa-verify has successfuly verfied this alfalfa video!" << endl;
   }
-  
+
   return return_code;
 }
